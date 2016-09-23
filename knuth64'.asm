@@ -42,6 +42,8 @@ The stack's elements are all 8-byte aligned, so that 3 bits (or 4 if I keep the 
 always zero. That means 31 (or 30) bits for a pointer, and since there are only 4 functions to be called, this should be 
 completely doable.
 
+In the end I went for a 35-bit pointer, since the bit I want is 16-byte aligned, which allows a potential 32GB.
+
 That got to 28 with 14GB of stack.
 
 currently A and B both do 48 bytes of stacking

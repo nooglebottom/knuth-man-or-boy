@@ -41,6 +41,8 @@ The stack's elements are all 8-byte aligned, so that 3 bits (or 4 if I keep the 
 always zero. That means 31 (or 30) bits for a pointer, and since there are only 4 functions to be called, this should be 
 completely doable.
 
+In the end I went for a 35-bit pointer, since the bit I want is 16-byte aligned, which allows a potential 32GB.
+
 That got to 28 with 14GB of stack.
 
 currently A and B both do 48 bytes of stacking
@@ -48,7 +50,9 @@ calls might mess up the exception mechanism, but they could probably be simulate
 B then needs to allocate 40 to call A, but A could need NOTHING to call B.
 A frame pointer would be needed.
 
-29 now.
+Since I am no longer forcing stack alignment I need to use a 34 bit pointer (16GB).
+
+29 now...with 10GB.
 A: 32 needed
 B: 8 needed.
 +
@@ -104,7 +108,7 @@ A:	cmp DWORD PTR [rsp+8],0
 	jle sum
 	mov rcx,[stack_base]
 	sub rcx,rsp
-	shr rcx,3
+	shr rcx,2
 	jmp B	;B's kind of a tail here...
 sum:;do the sum.
 	cmp DWORD PTR [rsp+24],1
@@ -144,7 +148,7 @@ sum_end:
 
 B:	mov eax,ecx
 	mov rdx,[stack_base]
-	shl rax,3
+	shl rax,2
 	sub rdx,rax
 	
 	dec DWORD PTR [rdx+8]
