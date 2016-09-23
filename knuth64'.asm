@@ -1,8 +1,7 @@
 ;For ml64, Windows x86-64
-;ml64 <filename>.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
-;Got up to 27 with a /STACK:10737418240 (10GB). 
+;ml64 knuth64'.asm ehandler.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
 
-COMMENT ~
+COMMENT ~ (OLD NOTES)
 Some hideous ALGOL60 by Knuth:
 
 begin
@@ -33,7 +32,7 @@ struct S{
 Then things should be sensible again.
 ~
 
-COMMENT +
+COMMENT + (MORE NOTES)
 I just thought of a way to make this use less stack.
 The structure needs only be 32 bits.
 I only have 16GB of memory, which needs 34 bits to address, so that the stack should be addressable by a 34-bit offset.
@@ -70,7 +69,7 @@ A PROC PUBLIC FRAME
 	.ALLOCSTACK 40
 	.ENDPROLOG
 	mov [rsp+64],r8
-	cmp ecx,0	;check k	...I don't know if cmp zeroes rcx? weeeeird
+	cmp ecx,0	;check k
 	jle sum
 	;On this branch the shadow space needs populating.
 	mov [rsp+48],rcx
@@ -91,12 +90,14 @@ done:
 	ret
 A ENDP
 
+;Because there are only four possiblities for function calls, pointers don't have to be used, but that 
+;does make calling them a little different.
 GETSUM PROC PRIVATE FRAME
 	sub rsp,40
 	.ALLOCSTACK 40
 	.ENDPROLOG
 	mov [rsp+48],rcx
-test1:cmp ecx,1
+test1:cmp ecx,1	
 	jne test2
 	call f0
 	jmp next_tests
@@ -189,6 +190,7 @@ arg1	dq	0300000000h;f1:??
 arg2	dq	0500000005h;fm1:fm1
 arg3	dq	0100000003h;f0:f1
 
+;Output nonsense.
 format_string	db	"%d -> %d",0dh,0ah,0
 len_format_string = $-format_string
 end_string 		db	"Stack overflow!"
@@ -198,6 +200,7 @@ CONST ENDS
 _BSS SEGMENT
 ALIGN 16
 stack_base		dq	?
+;Output nonsense.
 output_string	db	1024 dup (?)
 _BSS ENDS
 
@@ -210,37 +213,9 @@ f1:		mov eax,1
 fm1:	mov eax,-1
 		ret
 
-EXTERN __imp_RtlUnwind:PROC
-EHANDLER PROC PRIVATE FRAME
-		sub rsp,40
-		.ALLOCSTACK 40
-		.ENDPROLOG
-		
-		;check what we can do with the exception
-		cmp DWORD PTR [rcx+4],0
-		jne do_nothing	;it's not something I can deal with unless it's continuable.		
-		cmp DWORD PTR [rcx],0c00000fdh 	;check for a stack overflow
-		jne do_nothing ;I can't do anything with it
-		
-		;so...a stack overflow is to be had!
-		;It could come from windows, but that would be crazy.
-		
-		mov r10,rdx	;save the exception frame
-		mov r9,0
-		mov r8,rcx
-		lea rdx,[ehandler_safe_position]
-		mov rcx,r10
-		call QWORD PTR [__imp_RtlUnwind]
-		
-		xor rax,rax
-		add rsp,40
-		ret
-		
-do_nothing:
-		mov rax,1
-		add rsp,40
-		ret
-EHANDLER ENDP 
+;Exception handler stuff moved to ehandler.asm
+EXTERN EHANDLER:PROC
+PUBLIC ehandler_safe_position
 
 ENTRY PROC PUBLIC FRAME:EHANDLER
 		sub rsp,56

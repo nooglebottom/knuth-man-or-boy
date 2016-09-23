@@ -1,5 +1,5 @@
 ;For ml64, Windows x86-64
-;ml64 <filename>.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
+;ml64 knuth64.asm ehandler.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
 ;Got up to 27 with a /STACK:10737418240 (10GB). 
 
 COMMENT ~ (OLD NOTES)
@@ -154,43 +154,10 @@ f1:		mov eax,1
 		ret
 fm1:	mov eax,-1
 		ret
-
-;An exception handler to catch the inevitable stack overflow.
-;I'm not going to expound on too many details here.
-EXTERN __imp_RtlUnwind:PROC
-EHANDLER PROC PRIVATE FRAME
-		sub rsp,40
-		.ALLOCSTACK 40
-		.ENDPROLOG
 		
-		;check what we can do with the exception
-		cmp DWORD PTR [rcx+4],0
-		jne do_nothing	;it's not something I can deal with unless it's continuable.		
-		cmp DWORD PTR [rcx],0c00000fdh 	;check for a stack overflow
-		jne do_nothing ;I can't do anything with it
-		
-		;so...a stack overflow is to be had!
-		;It could come from windows, but that would be crazy.
-		
-		;The parameters need to be shuffled around a bit for RtlUnwind
-		xor r9,r9
-		mov r8,rcx
-		mov rcx,rdx
-		lea rdx,[ehandler_safe_position]
-		call QWORD PTR [__imp_RtlUnwind]
-		
-		;I don't think RtlUnwind actually returns (here),
-		;since that hardly makes sense,
-		;but I'm not 100% certain so there's some safety epilogue here.
-		xor rax,rax
-		add rsp,40
-		ret
-		
-do_nothing:
-		mov rax,1
-		add rsp,40
-		ret
-EHANDLER ENDP 
+;Exception handler stuff moved to ehandler.asm
+EXTERN EHANDLER:PROC
+PUBLIC ehandler_safe_position
 
 ;Finally, the program entry point.
 ENTRY PROC PUBLIC FRAME:EHANDLER
