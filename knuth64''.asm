@@ -1,6 +1,5 @@
 ;For ml64, Windows x86-64
 ;ml64 <filename>.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
-;Got up to 27 with a /STACK:10737418240 (10GB). 
 
 COMMENT ~
 Some hideous ALGOL60 by Knuth:
