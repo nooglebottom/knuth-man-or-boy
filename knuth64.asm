@@ -1,8 +1,8 @@
 ;For ml64, Windows x86-64
-;ml64 <filename>.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
+;ml64 knuth64.asm ehandler.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
 ;Got up to 27 with a /STACK:10737418240 (10GB). 
 
-COMMENT ~
+COMMENT ~ (OLD NOTES)
 Some hideous ALGOL60 by Knuth:
 
 begin
@@ -88,7 +88,7 @@ A ENDP
 ;free			72
 ;(pointer)rcx	64
 ;return			56
-;rbx			48
+;rbx			48 ;allocate 48
 ;p5				40
 ;p4				32
 ;p3				24
@@ -106,7 +106,7 @@ B PROC PUBLIC FRAME
 	dec DWORD PTR [rbx + 64];k <- k-1 in that frame
 
 	movdqu xmm0,[rbx+88]
-	movdqa [rsp+32],xmm0	;x3 and x4
+	movdqa [rsp+32],xmm0	;x3 and x4.
 	mov r9,[rbx+80]			;x2
 	mov r8,[rbx+72]			;x1
 	mov rdx,rcx				;B
@@ -127,89 +127,68 @@ EXTERN __imp_WriteFile:PROC
 EXTERN __imp_wsprintfA:PROC 
 
 CONST SEGMENT
+;The three 'functions' needed by the operation.
 ALIGN 16
 pf0		dq f0
 pf1		dq f1
 pfm1	dq fm1
 
+;Output nonsense.
 format_string	db	"%d -> %d",0dh,0ah,0
 len_format_string = $-format_string
 end_string 		db	"Stack overflow!"
 len_end_string = $ - end_string
 CONST ENDS
 
+;Static buffer for formatting the string since I'm lazy and there's only one thread, thanks.
 _BSS SEGMENT
 output_string	db	1024 dup (?)
 _BSS ENDS
 
 _TEXT SEGMENT
 
+;Function definitions. They're all leaves.
 f0:		xor eax,eax
 		ret
 f1:		mov eax,1
 		ret
 fm1:	mov eax,-1
 		ret
+		
+;Exception handler stuff moved to ehandler.asm
+EXTERN EHANDLER:PROC
+PUBLIC ehandler_safe_position
 
-EXTERN __imp_RtlUnwind:PROC
-EHANDLER PROC PRIVATE FRAME
-		sub rsp,40
-		.ALLOCSTACK 40
-		.ENDPROLOG
-		
-		;check what we can do with the exception
-		cmp DWORD PTR [rcx+4],0
-		jne do_nothing	;it's not something I can deal with unless it's continuable.		
-		cmp DWORD PTR [rcx],0c00000fdh 	;check for a stack overflow
-		jne do_nothing ;I can't do anything with it
-		
-		;so...a stack overflow is to be had!
-		;It could come from windows, but that would be crazy.
-		
-		mov r10,rdx	;save the exception frame
-		mov r9,0
-		mov r8,rcx
-		lea rdx,[ehandler_safe_position]
-		mov rcx,r10
-		call QWORD PTR [__imp_RtlUnwind]
-		
-		xor rax,rax
-		add rsp,40
-		ret
-		
-do_nothing:
-		mov rax,1
-		add rsp,40
-		ret
-EHANDLER ENDP 
-
+;Finally, the program entry point.
 ENTRY PROC PUBLIC FRAME:EHANDLER
 		sub rsp,56
 		.ALLOCSTACK 56
 		.ENDPROLOG
 		
+		;Get and save STANDARD_OUTPUT_HANDLE
 		mov rcx,-11
 		call QWORD PTR [__imp_GetStdHandle]
 		mov [rsp+80],rax
 		
-		mov QWORD PTR [rsp+88],0
+		mov QWORD PTR [rsp+88],0	;[rsp+88] will iterate over k, starting from 0.
 next:
 		lea r11,[pf0]
-		mov [rsp+40],r11
+		mov [rsp+40],r11			;0
 		lea r10,[pf1]
-		mov [rsp+32],r10
-		lea r9,[pfm1]
-		lea r8,[pfm1]
-		lea rdx,[pf1]
+		mov [rsp+32],r10			;1
+		lea r9,[pfm1]				;-1
+		lea r8,[pfm1]				;-1
+		lea rdx,[pf1]				;1
 		mov rcx,[rsp+88]			;here's k!
 		call A
 		
+		;Format the output.
 		mov r9,rax
 		mov r8,[rsp+88]
 		lea rdx,[format_string]
 		lea rcx,[output_string]
 		call QWORD PTR [__imp_wsprintfA]
-				
+		;Print the formatted string.
 		mov QWORD PTR [rsp+32],0
 		lea r9,[rsp+64]
 		mov r8,rax
@@ -217,10 +196,11 @@ next:
 		mov rcx,[rsp+80]
 		call QWORD PTR [__imp_WriteFile]
 
+		;increase k
 		inc QWORD PTR [rsp+88]
-		jmp next
+		jmp next	;Loop 'forever' ;) Actually just until the stack overflow exception comes.
 		
-ehandler_safe_position::	
+ehandler_safe_position::	;Two colons means a nonlocal label, visible beyond PROC scope.
 		mov QWORD PTR [rsp+32],0
 		lea r9,[rsp+64]
 		mov r8,len_end_string
@@ -230,9 +210,6 @@ ehandler_safe_position::
 	
 		xor rcx,rcx
 		call QWORD PTR [__imp_ExitProcess]
-		
-		add rsp,40
-		ret
 ENTRY ENDP
 _TEXT ENDS
 END

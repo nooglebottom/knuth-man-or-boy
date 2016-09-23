@@ -1,7 +1,7 @@
 ;For ml64, Windows x86-64
-;ml64 <filename>.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
+;ml64 knuth64'.asm ehandler.asm /Cp /link /ENTRY:ENTRY /SUBSYSTEM:CONSOLE kernel32.lib user32.lib /STACK:<stacksize>
 
-COMMENT ~
+COMMENT ~ (OLD NOTES)
 Some hideous ALGOL60 by Knuth:
 
 begin
@@ -32,7 +32,7 @@ struct S{
 Then things should be sensible again.
 ~
 
-COMMENT +
+COMMENT + (MORE NOTES)
 I just thought of a way to make this use less stack.
 The structure needs only be 32 bits.
 I only have 16GB of memory, which needs 34 bits to address, so that the stack should be addressable by a 34-bit offset.
@@ -41,6 +41,8 @@ The stack's elements are all 8-byte aligned, so that 3 bits (or 4 if I keep the 
 always zero. That means 31 (or 30) bits for a pointer, and since there are only 4 functions to be called, this should be 
 completely doable.
 
+In the end I went for a 35-bit pointer, since the bit I want is 16-byte aligned, which allows a potential 32GB.
+
 That got to 28 with 14GB of stack.
 
 currently A and B both do 48 bytes of stacking
@@ -48,7 +50,9 @@ calls might mess up the exception mechanism, but they could probably be simulate
 B then needs to allocate 40 to call A, but A could need NOTHING to call B.
 A frame pointer would be needed.
 
-29 now.
+Since I am no longer forcing stack alignment I need to use a 34 bit pointer (16GB).
+
+29 now...with 10GB.
 A: 32 needed
 B: 8 needed.
 +
@@ -57,7 +61,7 @@ _TEXT SEGMENT
 
 ;so...weirdly CALLS SEEM TO WORK INSIDE PROCEDURES???? and still unwind fine. WELP.
 pretend_call MACRO target:req
-LOCAL post
+;LOCAL post
 	call target
 ;	lea rdx,post
 ;	push rdx
@@ -104,12 +108,12 @@ A:	cmp DWORD PTR [rsp+8],0
 	jle sum
 	mov rcx,[stack_base]
 	sub rcx,rsp
-	shr rcx,3
+	shr rcx,2
 	jmp B	;B's kind of a tail here...
-sum:;do the sum.
-	cmp DWORD PTR [rsp+24],1
+sum:;do the sum. Here the functions are hard coded so I don't need to make a call
+	cmp DWORD PTR [rsp+24],1	
 	jne sum_2
-	mov rax,0
+	mov rax,0				
 	jmp sum_next
 sum_2:cmp DWORD PTR [rsp+24],3
 	jne sum_3
@@ -144,7 +148,7 @@ sum_end:
 
 B:	mov eax,ecx
 	mov rdx,[stack_base]
-	shl rax,3
+	shl rax,2
 	sub rdx,rax
 	
 	dec DWORD PTR [rdx+8]
@@ -175,6 +179,7 @@ arg1	dq	0300000000h;f1:??
 arg2	dq	0500000005h;fm1:fm1
 arg3	dq	0100000003h;f0:f1
 
+;Output nonsense.
 format_string	db	"%d -> %d",0dh,0ah,0
 len_format_string = $-format_string
 end_string 		db	"Stack overflow!"
@@ -184,6 +189,7 @@ CONST ENDS
 _BSS SEGMENT
 ALIGN 16
 stack_base		dq	?
+;Output nonsense.
 output_string	db	1024 dup (?)
 _BSS ENDS
 
@@ -195,38 +201,10 @@ f1:		mov eax,1
 		ret
 fm1:	mov eax,-1
 		ret
-
-EXTERN __imp_RtlUnwind:PROC
-EHANDLER PROC PRIVATE FRAME
-		sub rsp,40
-		.ALLOCSTACK 40
-		.ENDPROLOG
 		
-		;check what we can do with the exception
-		cmp DWORD PTR [rcx+4],0
-		jne do_nothing	;it's not something I can deal with unless it's continuable.		
-		cmp DWORD PTR [rcx],0c00000fdh 	;check for a stack overflow
-		jne do_nothing ;I can't do anything with it
-		
-		;so...a stack overflow is to be had!
-		;It could come from windows, but that would be crazy.
-		
-		mov r10,rdx	;save the exception frame
-		mov r9,0
-		mov r8,rcx
-		lea rdx,[ehandler_safe_position]
-		mov rcx,r10
-		call QWORD PTR [__imp_RtlUnwind]
-		
-		xor rax,rax
-		add rsp,40
-		ret
-		
-do_nothing:
-		mov rax,1
-		add rsp,40
-		ret
-EHANDLER ENDP 
+;Exception handler stuff moved to ehandler.asm
+EXTERN EHANDLER:PROC
+PUBLIC ehandler_safe_position
 
 ENTRY PROC PUBLIC FRAME:EHANDLER
 		sub rsp,56
